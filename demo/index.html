@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2FA验证器 - 桌面版</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/hmac-sha1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/enc-base64.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f5;
+            color: #1a1a1a;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 40px;
+            line-height: 1.6;
+        }
+        
+        .main-container {
+            width: 100%;
+            max-width: 1200px;
+            display: flex;
+            gap: 32px;
+            align-items: flex-start;
+        }
+        
+        .container {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+            padding: 40px;
+        }
+        
+        .sidebar {
+            width: 320px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+            padding: 32px;
+            position: sticky;
+            top: 40px;
+        }
+        
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        h1 {
+            color: #1a1a1a;
+            font-size: 2rem;
+            font-weight: 300;
+            letter-spacing: 2px;
+        }
+        
+        .card {
+            background: white;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 32px;
+            margin-bottom: 32px;
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 400;
+            color: #4a4a4a;
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+        }
+        
+        input {
+            width: 100%;
+            padding: 16px 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: all 0.2s ease;
+            background-color: #fafafa;
+        }
+        
+        input:focus {
+            border-color: #1a1a1a;
+            outline: none;
+            background-color: white;
+        }
+        
+        button {
+            background: #1a1a1a;
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 400;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            letter-spacing: 1px;
+        }
+        
+        button:hover {
+            background: #000;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .verifier-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+        
+        .verifier-item {
+            background: white;
+            border: 1px solid #e5e5e5;
+            border-radius: 8px;
+            padding: 24px;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+        
+        .verifier-item:hover {
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+            transform: translateY(-4px);
+        }
+        
+        .verifier-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .verifier-name {
+            font-weight: 400;
+            color: #1a1a1a;
+            font-size: 1.125rem;
+            letter-spacing: 0.5px;
+        }
+        
+        .verifier-code {
+            font-size: 3rem;
+            font-weight: 300;
+            text-align: center;
+            letter-spacing: 12px;
+            color: #1a1a1a;
+            margin: 24px 0;
+            font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+        }
+        
+        .verifier-time {
+            text-align: center;
+            color: #999;
+            font-size: 0.875rem;
+            margin-bottom: 16px;
+            letter-spacing: 0.5px;
+        }
+        
+        .progress-bar {
+            height: 3px;
+            background: #f0f0f0;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        .progress {
+            height: 100%;
+            background: #1a1a1a;
+            width: 100%;
+            transition: width 1s linear;
+        }
+        
+        .btn-danger {
+            background: transparent;
+            color: #999;
+            border: 1px solid #e0e0e0;
+            padding: 8px 16px;
+            font-size: 14px;
+            width: auto;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+        }
+        
+        .btn-danger:hover {
+            background: #f5f5f5;
+            color: #1a1a1a;
+            border-color: #1a1a1a;
+            transform: none;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 80px 40px;
+            color: #999;
+            font-size: 1.125rem;
+        }
+        
+        .copy-btn {
+            background: transparent;
+            color: #1a1a1a;
+            border: 1px solid #e0e0e0;
+            padding: 12px 24px;
+            font-size: 14px;
+            width: 100%;
+            margin-top: 16px;
+        }
+        
+        .copy-btn:hover {
+            background: #f5f5f5;
+            border-color: #1a1a1a;
+        }
+        
+        .stats {
+            background: #fafafa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .stat-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 0.875rem;
+        }
+        
+        .stat-value {
+            font-weight: 600;
+            color: #1a1a1a;
+            font-size: 1.125rem;
+        }
+        
+        .quick-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .quick-btn {
+            background: #f5f5f5;
+            color: #1a1a1a;
+            border: 1px solid #e0e0e0;
+            padding: 12px 20px;
+            font-size: 14px;
+            text-decoration: none;
+            text-align: center;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+        
+        .quick-btn:hover {
+            background: #1a1a1a;
+            color: white;
+            border-color: #1a1a1a;
+        }
+        
+        @media (max-width: 1024px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                position: static;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="container">
+            <header>
+                <h1>2FA 验证器</h1>
+            </header>
+            
+            <div class="card">
+                <form id="add-verifier-form">
+                    <div class="form-group">
+                        <label for="verifier-name">账户名称</label>
+                        <input type="text" id="verifier-name" placeholder="例如: GitHub" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="verifier-key">密钥</label>
+                        <input type="text" id="verifier-key" placeholder="输入 2FA 密钥" required>
+                    </div>
+                    <button type="submit">添加验证器</button>
+                </form>
+            </div>
+            
+            <div class="card">
+                <div id="verifier-list">
+                    <!-- 验证器将动态添加到这里 -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="sidebar">
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-label">验证器总数</span>
+                    <span class="stat-value" id="total-count">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">当前时间</span>
+                    <span class="stat-value" id="current-time">--:--</span>
+                </div>
+            </div>
+            
+            <div class="quick-actions">
+                <a href="#" class="quick-btn" onclick="exportData()">导出数据</a>
+                <a href="#" class="quick-btn" onclick="importData()">导入数据</a>
+                <a href="#" class="quick-btn" onclick="clearAll()">清空所有</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 设备检测和跳转
+        function detectDevice() {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                           window.innerWidth < 768;
+            
+            if (isMobile) {
+                window.location.href = '2FAM.html';
+            }
+        }
+        
+        // 页面加载时检测设备
+        detectDevice();
+        
+        // Base32 解码函数
+        function base32Decode(encoded) {
+            const base32Chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+            let bits = '';
+            let result = '';
+            
+            encoded = encoded.replace(/=+$/, '').replace(/\s/g, '').toUpperCase();
+            
+            for (let i = 0; i < encoded.length; i++) {
+                const val = base32Chars.indexOf(encoded[i]);
+                if (val === -1) throw new Error('Invalid base32 character');
+                bits += val.toString(2).padStart(5, '0');
+            }
+            
+            for (let i = 0; i + 8 <= bits.length; i += 8) {
+                const byte = bits.substr(i, 8);
+                result += String.fromCharCode(parseInt(byte, 2));
+            }
+            
+            return result;
+        }
+
+        // TOTP 生成函数
+        function generateTOTP(secret) {
+            try {
+                const key = base32Decode(secret);
+                const time = Math.floor(Date.now() / 1000 / 30);
+                
+                const timeBuffer = new ArrayBuffer(8);
+                const timeView = new DataView(timeBuffer);
+                timeView.setUint32(4, time, false);
+                
+                const timeHex = Array.from(new Uint8Array(timeBuffer))
+                    .map(b => b.toString(16).padStart(2, '0'))
+                    .join('');
+                
+                const wordArrayTime = CryptoJS.enc.Hex.parse(timeHex);
+                const wordArrayKey = CryptoJS.enc.Latin1.parse(key);
+                
+                const hmac = CryptoJS.HmacSHA1(wordArrayTime, wordArrayKey);
+                const hmacResult = hmac.toString(CryptoJS.enc.Hex);
+                
+                const offset = parseInt(hmacResult.substr(39, 1), 16) * 2;
+                const code = parseInt(hmacResult.substr(offset, 8), 16) & 0x7fffffff;
+                
+                return (code % 1000000).toString().padStart(6, '0');
+            } catch (error) {
+                console.error('TOTP generation error:', error);
+                return 'ERROR';
+            }
+        }
+        
+        // 计算剩余时间百分比
+        function getTimeRemaining() {
+            const now = new Date();
+            const seconds = now.getSeconds();
+            return (30 - (seconds % 30)) / 30 * 100;
+        }
+        
+        // 从 localStorage 加载验证器
+        function loadVerifiers() {
+            const verifiers = JSON.parse(localStorage.getItem('2faVerifiers')) || [];
+            return verifiers;
+        }
+        
+        // 保存验证器到 localStorage
+        function saveVerifiers(verifiers) {
+            localStorage.setItem('2faVerifiers', JSON.stringify(verifiers));
+        }
+        
+        // 更新统计信息
+        function updateStats() {
+            const verifiers = loadVerifiers();
+            document.getElementById('total-count').textContent = verifiers.length;
+            
+            const now = new Date();
+            const timeString = now.toLocaleTimeString('zh-CN', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            document.getElementById('current-time').textContent = timeString;
+        }
+        
+        // 渲染验证器列表
+        function renderVerifiers() {
+            const verifiers = loadVerifiers();
+            const container = document.getElementById('verifier-list');
+            
+            updateStats();
+            
+            if (verifiers.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <p>暂无验证器</p>
+                        <p style="font-size: 1rem; margin-top: 16px; color: #ccc;">请在上方添加您的第一个验证器</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = `
+                <div class="verifier-grid">
+                    ${verifiers.map((verifier, index) => {
+                        const code = generateTOTP(verifier.key);
+                        const timeRemaining = getTimeRemaining();
+                        const secondsLeft = Math.ceil((30 - (new Date().getSeconds() % 30)));
+                        
+                        return `
+                            <div class="verifier-item">
+                                <div class="verifier-header">
+                                    <div class="verifier-name">${verifier.name}</div>
+                                    <button class="btn-danger" onclick="deleteVerifier(${index})">删除</button>
+                                </div>
+                                <div class="verifier-code">${code}</div>
+                                <div class="verifier-time">${secondsLeft} 秒后更新</div>
+                                <div class="progress-bar">
+                                    <div class="progress" style="width: ${timeRemaining}%"></div>
+                                </div>
+                                <button class="copy-btn" onclick="copyCode('${code}')">复制验证码</button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        }
+        
+        // 添加新验证器
+        function addVerifier(name, key) {
+            const verifiers = loadVerifiers();
+            verifiers.push({ name, key });
+            saveVerifiers(verifiers);
+            renderVerifiers();
+        }
+        
+        // 删除验证器
+        function deleteVerifier(index) {
+            if (confirm('确定要删除这个验证器吗？')) {
+                const verifiers = loadVerifiers();
+                verifiers.splice(index, 1);
+                saveVerifiers(verifiers);
+                renderVerifiers();
+            }
+        }
+        
+        // 复制验证码
+        function copyCode(code) {
+            navigator.clipboard.writeText(code).then(() => {
+                // 创建临时提示
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '已复制 ✓';
+                btn.style.background = '#1a1a1a';
+                btn.style.color = 'white';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = 'transparent';
+                    btn.style.color = '#1a1a1a';
+                }, 2000);
+            });
+        }
+        
+        // 导出数据
+        function exportData() {
+            const verifiers = loadVerifiers();
+            const dataStr = JSON.stringify(verifiers, null, 2);
+            const dataBlob = new Blob([dataStr], { type: 'application/json' });
+            
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(dataBlob);
+            link.download = `2fa-backup-${new Date().toISOString().split('T')[0]}.json`;
+            link.click();
+        }
+        
+        // 导入数据
+        function importData() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                
+                reader.onload = (event) => {
+                    try {
+                        const imported = JSON.parse(event.target.result);
+                        if (Array.isArray(imported)) {
+                            if (confirm('导入的数据将覆盖现有数据，确定继续吗？')) {
+                                saveVerifiers(imported);
+                                renderVerifiers();
+                                alert('数据导入成功！');
+                            }
+                        } else {
+                            alert('无效的数据格式！');
+                        }
+                    } catch (error) {
+                        alert('文件读取失败，请检查文件格式！');
+                    }
+                };
+                
+                reader.readAsText(file);
+            };
+            
+            input.click();
+        }
+        
+        // 清空所有数据
+        function clearAll() {
+            if (confirm('确定要清空所有验证器数据吗？此操作不可恢复！')) {
+                localStorage.removeItem('2faVerifiers');
+                renderVerifiers();
+                alert('所有数据已清空！');
+            }
+        }
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            renderVerifiers();
+            
+            // 每秒钟更新一次验证码和进度条
+            setInterval(renderVerifiers, 1000);
+            
+            // 处理表单提交
+            document.getElementById('add-verifier-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const name = document.getElementById('verifier-name').value.trim();
+                const key = document.getElementById('verifier-key').value.trim();
+                
+                if (name && key) {
+                    addVerifier(name, key);
+                    document.getElementById('add-verifier-form').reset();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
